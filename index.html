@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon Battle Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #1a202c;
+            color: #e2e8f0;
+        }
+        .battle-scene {
+            background-image: url('https://github.com/EricBlendy/pkmnbattle/blob/main/bg1.png?raw=true');
+            background-size: cover;
+            background-position: center;
+            border: 8px solid #4a5568;
+            border-radius: 1rem;
+            position: relative;
+            overflow: hidden; /* This will crop sprites that go outside the box */
+        }
+        .pokemon-sprite {
+            image-rendering: pixelated;
+            transform: scale(3.3); /* Increased size by 10% */
+            transition: all 0.2s ease-in-out;
+        }
+        .pokemon-sprite.attack {
+            animation: attack-animation 0.3s;
+        }
+        .pokemon-sprite.hit {
+            animation: hit-animation 0.3s;
+        }
+        @keyframes attack-animation {
+            0%, 100% { transform: scale(3.3) translate(0, 0); }
+            50% { transform: scale(3.5) translate(10px, -10px); } /* Adjusted attack animation scale */
+        }
+        @keyframes hit-animation {
+            0% { opacity: 1; } 25% { opacity: 0.3; } 50% { opacity: 1; }
+            75% { opacity: 0.3; } 100% { opacity: 1; }
+        }
+        .health-bar-inner {
+            transition: width 0.5s ease-in-out;
+        }
+        .ui-box {
+            border: 4px solid #4a5568;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            background-color: rgba(45, 55, 72, 0.9);
+        }
+        .log-box {
+            overflow-y: scroll;
+        }
+        .action-button {
+            background-color: #4a5568;
+            border: 2px solid #718096;
+            transition: all 0.2s ease;
+        }
+        .action-button:hover:not(:disabled) {
+            background-color: #718096;
+            border-color: #a0aec0;
+        }
+        .action-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        /* Positioning Styles */
+        .status-box {
+            background-color: rgba(45, 55, 72, 0.85); /* Added transparency */
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            border: 4px solid #4a5568;
+            width: 260px; /* Widened the box */
+        }
+        #opponent-ui { position: absolute; top: 2rem; left: 2rem; }
+        #player-ui { position: absolute; bottom: 2rem; right: 2rem; z-index: 10; } /* Added z-index */
+        #opponent-sprite-container { position: absolute; top: 6rem; right: 8rem; } /* Adjusted position */
+        #player-sprite-container { position: absolute; bottom: 2rem; left: 10rem; } /* Adjusted position */
+
+        /* Selection Screen Styles */
+        .pokemon-grid {
+            height: 400px;
+            overflow-y: scroll;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background-color: #2d3748;
+            border-radius: 0.5rem;
+        }
+        .pokemon-grid-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 0.5rem; border: 2px solid #4a5568; border-radius: 0.5rem;
+            cursor: pointer; transition: all 0.2s ease;
+        }
+        .pokemon-grid-item:hover { background-color: #4a5568; }
+        .pokemon-grid-item.selected { background-color: #4299e1; border-color: #63b3ed; }
+        .pokemon-grid-item img { width: 72px; height: 72px; image-rendering: pixelated; }
+        .pokemon-grid-item span { font-size: 0.6rem; text-align: center; margin-top: 0.25rem; text-transform: capitalize; }
+        .selected-team-display { display: flex; gap: 0.5rem; min-height: 52px; background-color: #2d3748; padding: 0.5rem; border-radius: 0.5rem; }
+        .selected-team-display img { width: 48px; height: 48px; background-color: #4a5568; border-radius: 50%; }
+        
+        /* Type Badge Styles */
+        .type-badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.7rem; text-transform: uppercase; color: white; text-shadow: 1px 1px 2px black; }
+        .type-normal { background-color: #A8A77A; } .type-fire { background-color: #EE8130; } .type-water { background-color: #6390F0; } .type-electric { background-color: #F7D02C; } .type-grass { background-color: #7AC74C; } .type-ice { background-color: #96D9D6; } .type-fighting { background-color: #C22E28; } .type-poison { background-color: #A33EA1; } .type-ground { background-color: #E2BF65; } .type-flying { background-color: #A98FF3; } .type-psychic { background-color: #F95587; } .type-bug { background-color: #A6B91A; } .type-rock { background-color: #B6A136; } .type-ghost { background-color: #735797; } .type-dragon { background-color: #6F35FC; } .type-dark { background-color: #705746; } .type-steel { background-color: #B7B7CE; } .type-fairy { background-color: #D685AD; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <!-- Selection Screen -->
+    <div id="selection-screen" class="max-w-7xl mx-auto">
+        <h1 class="text-3xl text-center mb-6">Team Selection</h1>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="ui-box flex flex-col">
+                <h2 class="text-2xl mb-2">Your Team</h2>
+                <div id="player-selected-team" class="selected-team-display mb-2"></div>
+                <input type="text" id="player-search" class="w-full p-2 rounded bg-gray-800 border border-gray-600 mb-2" placeholder="Search Pokémon...">
+                <div id="player-selection-grid" class="pokemon-grid flex-grow"></div>
+            </div>
+            <div class="ui-box flex flex-col">
+                <h2 class="text-2xl mb-2">Opponent's Team</h2>
+                <div id="opponent-selected-team" class="selected-team-display mb-2"></div>
+                <input type="text" id="opponent-search" class="w-full p-2 rounded bg-gray-800 border border-gray-600 mb-2" placeholder="Search Pokémon...">
+                <div id="opponent-selection-grid" class="pokemon-grid flex-grow"></div>
+            </div>
+        </div>
+        <div class="text-center mt-6"><button id="start-battle-btn" class="action-button text-2xl px-8 py-4 rounded-lg">Start Battle</button></div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 bg-gray-900 flex-col items-center justify-center z-50 hidden">
+        <h1 class="text-3xl mb-4">Pokémon Battle Simulator</h1>
+        <p id="loading-text" class="text-xl">Loading Battle Data...</p>
+        <div class="mt-4 border-4 border-gray-400 border-t-4 border-t-blue-500 rounded-full w-12 h-12 animate-spin"></div>
+    </div>
+
+    <!-- Battle Screen -->
+    <div id="battle-container" class="max-w-4xl mx-auto hidden">
+        <!-- Battle Scene -->
+        <div class="battle-scene h-96 mb-4">
+            <!-- Opponent UI (Top Left) -->
+            <div id="opponent-ui" class="status-box">
+                <div class="flex justify-between items-center mb-1"><span id="opponent-name" class="text-lg"></span><span class="text-xs">Lv. 50</span></div>
+                <div class="w-full bg-gray-500 rounded-full h-4 border-2 border-gray-600"><div id="opponent-health-bar" class="bg-green-500 h-full rounded-full"></div></div>
+                <p id="opponent-hp-text" class="text-right text-xs mt-1"></p>
+            </div>
+            <!-- Opponent Sprite (Top Right) -->
+            <div id="opponent-sprite-container">
+                <img id="opponent-sprite" class="pokemon-sprite" src="" alt="Opponent Pokémon">
+            </div>
+
+            <!-- Player UI (Bottom Right) -->
+            <div id="player-ui" class="status-box">
+                <div class="flex justify-between items-center mb-1"><span id="player-name" class="text-lg"></span><span class="text-xs">Lv. 50</span></div>
+                <div class="w-full bg-gray-500 rounded-full h-4 border-2 border-gray-600"><div id="player-health-bar" class="bg-green-500 h-full rounded-full"></div></div>
+                <p id="player-hp-text" class="text-right text-xs mt-1"></p>
+            </div>
+            <!-- Player Sprite (Bottom Left) -->
+            <div id="player-sprite-container">
+                <img id="player-sprite" class="pokemon-sprite" src="" alt="Player Pokémon">
+            </div>
+        </div>
+        <!-- UI: Log and Actions -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="ui-box log-box h-48" id="battle-log"></div>
+            <div class="ui-box grid grid-cols-2 gap-2 h-48" id="actions-container"></div>
+        </div>
+    </div>
+
+    <script>
+        const POKEAPI_BASE_URL = 'https://pokeapi.co/api/v2';
+        const LEVEL = 50;
+
+        // --- DOM ELEMENTS ---
+        const selectionScreen = document.getElementById('selection-screen');
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingText = document.getElementById('loading-text');
+        const battleContainer = document.getElementById('battle-container');
+        const battleLog = document.getElementById('battle-log');
+        const actionsContainer = document.getElementById('actions-container');
+        const startBattleBtn = document.getElementById('start-battle-btn');
+        const playerSelectionGrid = document.getElementById('player-selection-grid');
+        const opponentSelectionGrid = document.getElementById('opponent-selection-grid');
+        const playerSelectedTeamEl = document.getElementById('player-selected-team');
+        const opponentSelectedTeamEl = document.getElementById('opponent-selected-team');
+        const playerSearchInput = document.getElementById('player-search');
+        const opponentSearchInput = document.getElementById('opponent-search');
+        
+        const playerNameEl = document.getElementById('player-name');
+        const playerSpriteEl = document.getElementById('player-sprite');
+        const playerHealthBarEl = document.getElementById('player-health-bar');
+        const playerHpTextEl = document.getElementById('player-hp-text');
+
+        const opponentNameEl = document.getElementById('opponent-name');
+        const opponentSpriteEl = document.getElementById('opponent-sprite');
+        const opponentHealthBarEl = document.getElementById('opponent-health-bar');
+        const opponentHpTextEl = document.getElementById('opponent-hp-text');
+
+        // --- BATTLE STATE ---
+        let playerTeam = [];
+        let opponentTeam = [];
+        let playerPokemon;
+        let opponentPokemon;
+        let typeDataCache = {};
+        let isBattleOver = false;
+        let allPokemonList = [];
+        let playerSelectedNames = [];
+        let opponentSelectedNames = [];
+
+        // --- HELPER FUNCTIONS ---
+        const logMessage = (message) => {
+            const p = document.createElement('p');
+            p.innerHTML = message;
+            battleLog.appendChild(p);
+            battleLog.scrollTop = battleLog.scrollHeight;
+        };
+        const getTypeColorClass = (typeName) => `type-${typeName.toLowerCase()}`;
+        const createTypeBadge = (typeName) => `<span class="type-badge ${getTypeColorClass(typeName)}">${typeName}</span>`;
+
+        // --- API FETCHING ---
+        async function fetchJson(url) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return await response.json();
+            } catch (e) { console.error(`Failed to fetch from ${url}`, e); return null; }
+        }
+        
+        async function fetchTypeData(typeName) {
+            if (typeDataCache[typeName]) return typeDataCache[typeName];
+            const data = await fetchJson(`${POKEAPI_BASE_URL}/type/${typeName}`);
+            if (data) typeDataCache[typeName] = data.damage_relations;
+            return typeDataCache[typeName];
+        }
+
+        async function createPokemon(pokemonName) {
+            if (!pokemonName) return null;
+            loadingText.textContent = `Loading ${pokemonName}...`;
+            const pokemonData = await fetchJson(`${POKEAPI_BASE_URL}/pokemon/${pokemonName.toLowerCase()}`);
+            if (!pokemonData) { alert(`Could not find Pokémon: ${pokemonName}`); return null; }
+
+            const stats = {};
+            pokemonData.stats.forEach(s => { stats[s.stat.name] = s.base_stat; });
+            const types = pokemonData.types.map(t => t.type.name);
+            
+            const potentialMoves = await Promise.all(
+                pokemonData.moves.map(moveInfo => fetchJson(moveInfo.move.url))
+            );
+            
+            const moves = potentialMoves
+                .filter(moveData => moveData && moveData.power && moveData.damage_class.name !== 'status')
+                .slice(0, 4)
+                .map(moveData => ({
+                    name: moveData.name,
+                    power: moveData.power,
+                    type: moveData.type.name,
+                    accuracy: moveData.accuracy,
+                    pp: moveData.pp,
+                    currentPp: moveData.pp,
+                    damage_class: moveData.damage_class.name,
+                }));
+
+            const maxHp = Math.floor(((2 * stats.hp + 31 + Math.floor(252 / 4)) * LEVEL) / 100) + LEVEL + 10;
+
+            return {
+                name: pokemonData.name.charAt(0).toUpperCase() + pokemonData.name.slice(1),
+                stats, types, moves, maxHp, currentHp: maxHp, fainted: false,
+                sprite: { front: pokemonData.sprites.front_default, back: pokemonData.sprites.back_default }
+            };
+        }
+
+        // --- UI UPDATES ---
+        function updateActivePokemonUI() {
+            playerNameEl.textContent = playerPokemon.name;
+            playerSpriteEl.src = playerPokemon.sprite.back;
+            const playerHpPercent = (playerPokemon.currentHp / playerPokemon.maxHp) * 100;
+            playerHealthBarEl.style.width = `${playerHpPercent}%`;
+            playerHpTextEl.textContent = `${playerPokemon.currentHp} / ${playerPokemon.maxHp}`;
+            updateHealthBarColor(playerHealthBarEl, playerHpPercent);
+
+            opponentNameEl.textContent = opponentPokemon.name;
+            opponentSpriteEl.src = opponentPokemon.sprite.front;
+            const opponentHpPercent = (opponentPokemon.currentHp / opponentPokemon.maxHp) * 100;
+            opponentHealthBarEl.style.width = `${opponentHpPercent}%`;
+            opponentHpTextEl.textContent = `${opponentPokemon.currentHp} / ${opponentPokemon.maxHp}`;
+            updateHealthBarColor(opponentHealthBarEl, opponentHpPercent);
+        }
+        
+        function updateHealthBarColor(bar, percent) {
+            bar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500');
+            if (percent > 50) bar.classList.add('bg-green-500');
+            else if (percent > 20) bar.classList.add('bg-yellow-500');
+            else bar.classList.add('bg-red-500');
+        }
+
+        function showMoveButtons() {
+            actionsContainer.innerHTML = '';
+            playerPokemon.moves.forEach(move => {
+                const moveButton = document.createElement('button');
+                moveButton.className = `action-button p-2 rounded-md text-left`;
+                moveButton.disabled = move.currentPp <= 0;
+                moveButton.innerHTML = `
+                    <div class="font-bold text-sm">${move.name.replace('-', ' ')}</div>
+                    <div class="text-xs flex justify-between">
+                        <span>${createTypeBadge(move.type)}</span>
+                        <span>PP ${move.currentPp}/${move.pp}</span>
+                    </div>`;
+                moveButton.onclick = () => handlePlayerMove(move);
+                actionsContainer.appendChild(moveButton);
+            });
+        }
+
+        function showSwitchButtons() {
+            actionsContainer.innerHTML = '';
+            playerTeam.forEach((pokemon, index) => {
+                if (pokemon.fainted) return;
+                const switchButton = document.createElement('button');
+                switchButton.className = 'action-button p-2 rounded-md';
+                switchButton.textContent = pokemon.name;
+                switchButton.onclick = () => switchPlayerPokemon(index);
+                actionsContainer.appendChild(switchButton);
+            });
+        }
+
+        function disableActionButtons(disabled) {
+            document.querySelectorAll('.action-button').forEach(b => { b.disabled = disabled; });
+        }
+
+        // --- BATTLE LOGIC ---
+        async function calculateDamage(attacker, defender, move) {if (!move.power) return 0;const isSpecial = move.damage_class === 'special';const attackStat = isSpecial ? attacker.stats['special-attack'] : attacker.stats.attack;const defenseStat = isSpecial ? defender.stats['special-defense'] : defender.stats.defense;let damage = Math.floor(((((2 * LEVEL) / 5) + 2) * move.power * (attackStat / defenseStat)) / 50) + 2;let typeEffectiveness = 1;for (const type of defender.types) {const typeRelations = await fetchTypeData(move.type);if (typeRelations.double_damage_to.some(t => t.name === type)) typeEffectiveness *= 2;if (typeRelations.half_damage_to.some(t => t.name === type)) typeEffectiveness *= 0.5;if (typeRelations.no_damage_to.some(t => t.name === type)) typeEffectiveness *= 0;}if (typeEffectiveness > 1) logMessage("It's super effective!");if (typeEffectiveness < 1 && typeEffectiveness > 0) logMessage("It's not very effective...");if (typeEffectiveness === 0) logMessage(`It doesn't affect ${defender.name}...`);damage = Math.floor(damage * typeEffectiveness);if (attacker.types.includes(move.type)) damage = Math.floor(damage * 1.5);return damage;}
+        
+        async function performAttack(attacker, defender, move, attackerSprite, defenderSprite) {
+            move.currentPp--;
+
+            logMessage(`${attacker.name} used ${move.name.replace('-', ' ')}!`);
+            attackerSprite.classList.add('attack');
+            await new Promise(res => setTimeout(res, 300));
+            attackerSprite.classList.remove('attack');
+
+            if (Math.random() * 100 > move.accuracy && move.accuracy !== null) {
+                logMessage(`${attacker.name}'s attack missed!`);
+                return;
+            }
+            
+            const damage = await calculateDamage(attacker, defender, move);
+            defender.currentHp = Math.max(0, defender.currentHp - damage);
+            
+            defenderSprite.classList.add('hit');
+            await new Promise(res => setTimeout(res, 400));
+            defenderSprite.classList.remove('hit');
+            
+            updateActivePokemonUI();
+
+            if (defender.currentHp === 0) {
+                defender.fainted = true;
+                logMessage(`<strong>${defender.name} fainted!</strong>`);
+                await new Promise(res => setTimeout(res, 1000));
+            }
+        }
+        
+        async function handlePlayerMove(move) {
+            disableActionButtons(true);
+            const playerGoesFirst = playerPokemon.stats.speed >= opponentPokemon.stats.speed;
+            
+            if (playerGoesFirst) {
+                await performAttack(playerPokemon, opponentPokemon, move, playerSpriteEl, opponentSpriteEl);
+                if (!opponentPokemon.fainted) await handleOpponentMove();
+            } else {
+                await handleOpponentMove();
+                if (!playerPokemon.fainted) await performAttack(playerPokemon, opponentPokemon, move, playerSpriteEl, opponentSpriteEl);
+            }
+            
+            await handleFainted();
+        }
+        
+        async function handleOpponentMove() {
+            const usableMoves = opponentPokemon.moves.filter(m => m.currentPp > 0);
+            if (usableMoves.length === 0) {
+                logMessage(`${opponentPokemon.name} has no moves left!`);
+                return;
+            }
+            const move = usableMoves[Math.floor(Math.random() * usableMoves.length)];
+            await performAttack(opponentPokemon, playerPokemon, move, opponentSpriteEl, playerSpriteEl);
+        }
+        
+        async function handleFainted() {
+            if (opponentPokemon.fainted) {
+                const nextOpponent = opponentTeam.find(p => !p.fainted);
+                if (nextOpponent) {
+                    opponentPokemon = nextOpponent;
+                    logMessage(`Opponent sent out ${opponentPokemon.name}!`);
+                    updateActivePokemonUI();
+                } else {
+                    endBattle(playerTeam);
+                    return;
+                }
+            }
+
+            if (playerPokemon.fainted) {
+                const remainingPlayerTeam = playerTeam.filter(p => !p.fainted);
+                if (remainingPlayerTeam.length > 0) {
+                    logMessage("Choose your next Pokémon!");
+                    showSwitchButtons();
+                    disableActionButtons(false);
+                } else {
+                    endBattle(opponentTeam);
+                }
+                return;
+            }
+            
+            if (!isBattleOver) showMoveButtons();
+        }
+        
+        function switchPlayerPokemon(index) {
+            if (playerTeam[index].fainted || playerTeam[index] === playerPokemon) return;
+            playerPokemon = playerTeam[index];
+            logMessage(`Go, ${playerPokemon.name}!`);
+            updateActivePokemonUI();
+            showMoveButtons();
+        }
+        
+        function endBattle(winningTeam) {
+            isBattleOver = true;
+            disableActionButtons(true);
+            const winnerName = winningTeam === playerTeam ? "You" : "The opponent";
+            logMessage(`<strong>${winnerName} won the battle!</strong>`);
+            logMessage(`--- Battle Over ---`);
+        }
+
+        // --- SELECTION LOGIC ---
+        function handlePokemonSelection(pokemonName, teamType, element) {const team = teamType === 'player' ? playerSelectedNames : opponentSelectedNames;const index = team.indexOf(pokemonName);if (index > -1) {team.splice(index, 1);element.classList.remove('selected');} else {if (team.length >= 6) {alert('You can only select up to 6 Pokémon.');return;}team.push(pokemonName);element.classList.add('selected');}updateSelectedTeamUI(teamType);}
+        function updateSelectedTeamUI(teamType) {const teamNames = teamType === 'player' ? playerSelectedNames : opponentSelectedNames;const displayEl = teamType === 'player' ? playerSelectedTeamEl : opponentSelectedTeamEl;displayEl.innerHTML = '';teamNames.forEach(name => {const pokemonInfo = allPokemonList.find(p => p.name === name);const id = pokemonInfo.url.split('/')[6];const spriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;const img = document.createElement('img');img.src = spriteUrl;img.alt = name;displayEl.appendChild(img);});}
+        
+        function filterPokemonGrid(grid, searchTerm) {
+            const items = grid.getElementsByClassName('pokemon-grid-item');
+            for (const item of items) {
+                const pokemonName = item.dataset.name.toLowerCase();
+                if (pokemonName.includes(searchTerm.toLowerCase())) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            }
+        }
+        
+        async function populateSelectionGrids() {
+            loadingText.textContent = 'Fetching all Pokémon...';
+            const data = await fetchJson(`${POKEAPI_BASE_URL}/pokemon?limit=1025`);
+            if (data && data.results) {
+                allPokemonList = data.results;
+                [playerSelectionGrid, opponentSelectionGrid].forEach(grid => {
+                    allPokemonList.forEach(pokemon => {
+                        const id = pokemon.url.split('/')[6];
+                        const item = document.createElement('div');
+                        item.className = 'pokemon-grid-item';
+                        item.dataset.name = pokemon.name;
+                        item.innerHTML = `<img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png" alt="${pokemon.name}" loading="lazy"><span>${pokemon.name}</span>`;
+                        const teamType = grid.id.includes('player') ? 'player' : 'opponent';
+                        item.onclick = () => handlePokemonSelection(pokemon.name, teamType, item);
+                        grid.appendChild(item);
+                    });
+                });
+            }
+            loadingScreen.classList.add('hidden');
+            selectionScreen.classList.remove('hidden');
+        }
+
+        // --- INITIALIZATION ---
+        async function initBattle() {
+            if (playerSelectedNames.length === 0) {
+                alert("Please select at least one Pokémon for each team.");
+                return;
+            }
+            if (playerSelectedNames.length !== opponentSelectedNames.length) {
+                alert("Each team must have the same number of Pokémon to start.");
+                return;
+            }
+
+            selectionScreen.classList.add('hidden');
+            loadingScreen.classList.remove('hidden');
+
+            playerTeam = (await Promise.all(playerSelectedNames.map(createPokemon))).filter(p => p);
+            opponentTeam = (await Promise.all(opponentSelectedNames.map(createPokemon))).filter(p => p);
+            
+            if (playerTeam.length !== playerSelectedNames.length || opponentTeam.length !== opponentSelectedNames.length) {
+                alert("Could not start battle. One or more selected Pokémon are invalid. Please check the names and try again.");
+                selectionScreen.classList.remove('hidden');
+                loadingScreen.classList.add('hidden');
+                return;
+            }
+
+            playerPokemon = playerTeam[0];
+            opponentPokemon = opponentTeam[0];
+            
+            loadingScreen.classList.add('hidden');
+            battleContainer.classList.remove('hidden');
+            battleLog.innerHTML = '';
+            logMessage(`A wild ${opponentPokemon.name} appeared!`);
+            logMessage(`Go, ${playerPokemon.name}!`);
+            
+            updateActivePokemonUI();
+            showMoveButtons();
+        }
+
+        window.onload = () => {
+            selectionScreen.classList.add('hidden');
+            loadingScreen.classList.remove('hidden');
+            populateSelectionGrids();
+            startBattleBtn.onclick = initBattle;
+            playerSearchInput.onkeyup = () => filterPokemonGrid(playerSelectionGrid, playerSearchInput.value);
+            opponentSearchInput.onkeyup = () => filterPokemonGrid(opponentSelectionGrid, opponentSearchInput.value);
+        };
+    </script>
+</body>
+</html>
